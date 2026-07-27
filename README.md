@@ -1,24 +1,24 @@
 # kronked-os
 
-A 32-bit x86 operating system built from scratch in C and assembly — no
+A 32-bit x86 operating system built from scratch in C and assembly. Assumes no
 existing kernel, bootloader, or OS-dev framework as a starting point.
-Built as a project to understand every layer between power-on and a
-usable desktop, one subsystem at a time.
+Built as part of a mildly successful attempt to understand every layer between power-on and a
+usable desktop.
 
 ## Features
 
-- **Custom two-stage bootloader** — real mode → protected mode, its own
-  A20 enable and E820 memory detection, no GRUB/Multiboot dependency
-- **Preemptive multitasking** — round-robin scheduler, timer-driven
+- **Custom two-stage bootloader**: does real mode → protected mode using its own
+  A20 enable and E820 memory detection
+- **Preemptive multitasking**: round-robin scheduler, timer-driven
   context switches, blocking mutexes
-- **Real processes** — ring 3 execution, `int 0x80` syscalls, an ELF32
+- **Real processes**: ring 3 execution, `int 0x80` syscalls, an ELF32
   loader, and `fork()`/`exec()`/`wait()` with copy-on-write
-- **Memory management** — bitmap physical frame allocator, paging with
+- **Memory management**: bitmap physical frame allocator, paging with
   per-frame refcounts, a heap allocator
 - **FAT16 filesystem** over a polled ATA (PIO) driver
 - **VBE framebuffer graphics** with a PCI-enumerated video BAR, a PS/2
   mouse driver, and a simple windowing/compositor GUI
-- **KRONK** — a small BASIC-style interpreted language with no external
+- **KRONK**: a small BASIC-style interpreted language with no external
   compiler dependency
 - An interactive shell, text editor, and a couple of demo programs
   (Snake, a fork/COW demo)
@@ -28,8 +28,7 @@ usable desktop, one subsystem at a time.
 Requires `gcc`, `nasm`, `ld`, `qemu-system-x86_64`, and `mtools`.
 
 ```bash
-make run-custom-boot        # headless, serial output only
-make run-custom-boot-vga    # with a display, for keyboard/mouse/GUI
+make run-vga    # with a display, for keyboard/mouse/GUI
 ```
 
 ## Project layout
