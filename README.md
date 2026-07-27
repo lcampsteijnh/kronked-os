@@ -27,14 +27,16 @@ usable desktop, one subsystem at a time.
 
 Requires `gcc`, `nasm`, `ld`, `qemu-system-x86_64`, and `mtools`.
 
-    make run-custom-boot        # headless, serial output only
-    make run-custom-boot-vga    # with a display, for keyboard/mouse/GUI
+```bash
+make run-custom-boot        # headless, serial output only
+make run-custom-boot-vga    # with a display, for keyboard/mouse/GUI
+```
 
 ## Project layout
 
-    boot/       stage1.s, stage2.s, boot.s   — bootloader + kernel entry
-    kernel/     everything else              — memory, tasking, drivers, GUI, shell
-    userland/   ELF binaries run in ring 3   — fork demo, COW demo, desktop app
+    boot/       stage1.s, stage2.s, boot.s   -> bootloader + kernel entry
+    kernel/     everything else              -> memory, tasking, drivers, GUI, shell
+    userland/   ELF binaries run in ring 3   -> fork demo, COW demo, desktop app
     tools/      font/cursor bitmap generators
 
 ## Status
