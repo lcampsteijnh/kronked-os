@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>kronked-os — system map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#10151d; --panel2:#141a24; --line:#232c38;
+    --text:#c9d6e3; --text-dim:#66788c; --text-dim2:#41505f;
+    --trace:#5fd8c4;
+    --l-boot:#8f97a3; --l-user:#9d8bff; --l-gui:#4fd1c5; --l-sys:#f2a65a;
+    --l-core:#ef7d6a; --l-drv:#ec7fb0; --l-hw:#7a8899;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:'Inter',system-ui,sans-serif; padding:28px 20px 60px;
+  }
+  .wrap{max-width:1100px; margin:0 auto}
+  h1{
+    font-size:15px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--text-dim); margin:0 0 4px;
+  }
+  .sub{font-size:13px; color:var(--text-dim2); margin:0 0 28px}
+  .layout{display:grid; grid-template-columns:220px 1fr; gap:24px}
+  @media(max-width:760px){.layout{grid-template-columns:1fr}}
+
+  /* ---- layer stack ---- */
+  .stack{display:flex; flex-direction:column; gap:6px; position:sticky; top:20px}
+  .layer{
+    border:1px solid var(--line); border-left:3px solid var(--lc);
+    background:var(--panel); border-radius:4px; padding:9px 10px;
+    font-size:12px; opacity:.45; transition:opacity .25s, box-shadow .25s;
+    position:relative;
+  }
+  .layer.active{opacity:1; box-shadow:0 0 0 1px var(--lc), 0 0 14px -2px var(--lc)}
+  .layer .name{font-weight:600; color:var(--text)}
+  .layer .files{
+    font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--text-dim);
+    margin-top:2px; line-height:1.5;
+  }
+  .layer .seq{
+    position:absolute; right:8px; top:8px; width:16px; height:16px; border-radius:50%;
+    background:var(--lc); color:var(--bg); font-family:'JetBrains Mono',monospace;
+    font-size:9px; font-weight:700; display:none; align-items:center; justify-content:center;
+  }
+  .layer.active .seq{display:flex}
+
+  /* ---- scenario tabs ---- */
+  .tabs{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:18px}
+  .tab{
+    font-family:'JetBrains Mono',monospace; font-size:11.5px; padding:7px 11px;
+    border:1px solid var(--line); border-radius:4px; background:var(--panel);
+    color:var(--text-dim); cursor:pointer; transition:all .15s; user-select:none;
+  }
+  .tab:hover{color:var(--text); border-color:var(--text-dim2)}
+  .tab.on{background:var(--trace); color:#06201b; border-color:var(--trace); font-weight:700}
+
+  /* ---- trace panel ---- */
+  .panel{background:var(--panel2); border:1px solid var(--line); border-radius:6px; padding:20px 22px}
+  .panel h2{font-size:15px; margin:0 0 3px; font-weight:600}
+  .panel .desc{font-size:12.5px; color:var(--text-dim); margin:0 0 20px}
+  .steps{position:relative; padding-left:26px}
+  .steps::before{
+    content:""; position:absolute; left:9px; top:6px; bottom:6px; width:1px;
+    background:var(--line);
+  }
+  .step{position:relative; padding-bottom:18px}
+  .step:last-child{padding-bottom:0}
+  .step .dot{
+    position:absolute; left:-26px; top:2px; width:19px; height:19px; border-radius:50%;
+    background:var(--bg); border:1.5px solid var(--sc); color:var(--sc);
+    font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:700;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .step .tag{
+    font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--sc);
+    text-transform:uppercase; letter-spacing:.04em; margin-bottom:2px;
+  }
+  .step .loc{font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--text); margin-bottom:3px}
+  .step .loc .fn{color:var(--trace)}
+  .step .note{font-size:12.5px; color:var(--text-dim); line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>kronked-os</h1>
+  <p class="sub">click a scenario — the stack lights up in the order that interaction actually touches it</p>
+
+  <div class="layout">
+    <div class="stack" id="stack"></div>
+    <div>
+      <div class="tabs" id="tabs"></div>
+      <div class="panel">
+        <h2 id="scTitle"></h2>
+        <p class="desc" id="scDesc"></p>
+        <div class="steps" id="steps"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const LAYERS = [
+  {id:'boot', name:'Bootloader', color:'var(--l-boot)', files:'stage1.s · stage2.s · boot.s'},
+  {id:'hw',   name:'Raw hardware', color:'var(--l-hw)',  files:'CPU, RAM, disk, ports, PIC/PIT'},
+  {id:'drv',  name:'Drivers', color:'var(--l-drv)', files:'serial · vga · timer · keyboard · ata · fat16 · vbe · pci · mouse'},
+  {id:'core', name:'Kernel core', color:'var(--l-core)', files:'gdt · idt · pmm · paging · heap · task · elf · mutex'},
+  {id:'sys',  name:'Syscall interface', color:'var(--l-sys)', files:'syscall.c · usermode.s · isr_stubs.s'},
+  {id:'gui',  name:'GUI & desktop', color:'var(--l-gui)', files:'gui.c · desktop.c · mouse.c'},
+  {id:'user', name:'Userland & shell', color:'var(--l-user)', files:'shell · editor · snake · kronk · user_program'},
+];
+// display order top-to-bottom mirrors the abstraction stack
+const STACK_ORDER = ['user','gui','sys','core','drv','hw','boot'];
+
+const SCENARIOS = [
+  {
+    id:'boot', label:'boot',
+    title:'Power-on → shell prompt',
+    desc:'Everything before this is preparation for one goal: get real C code running and hand control to the user.',
+    steps:[
+      {l:'boot', file:'stage1.s', fn:'start', n:'BIOS loads sector 0 at 0x7C00, jumps in'},
+      {l:'boot', file:'stage1.s', fn:'int 0x13/AH=42h', n:'reads Stage 2 off disk via LBA'},
+      {l:'boot', file:'stage2.s', fn:'build_memory_map', n:'A20 enabled, real E820 map gathered'},
+      {l:'boot', file:'stage2.s', fn:'protected_mode_entry', n:'kernel copied to 0x100000, CR0.PE set'},
+      {l:'core', file:'boot.s', fn:'_start', n:'.bss zeroed, EAX/EBX stashed, calls kernel_main'},
+      {l:'core', file:'kernel.c', fn:'kernel_main', n:'gdt_init → idt_init → pmm_init → paging_init → heap_init'},
+      {l:'drv',  file:'timer.c / keyboard.c', fn:'timer_init(100) / keyboard_init', n:'IRQ0 and IRQ1 wired up'},
+      {l:'drv',  file:'ata.c / fat16.c', fn:'ata_identify / fat16_mount', n:'disk found, filesystem mounted'},
+      {l:'core', file:'task.c', fn:'task_init / task_start_scheduling', n:'scheduler goes live, sti executed'},
+      {l:'user', file:'shell.c', fn:'shell_run', n:'kernel_main never returns from here'},
+    ]
+  },
+  {
+    id:'key', label:'keypress → command',
+    title:'Keypress → shell command',
+    desc:'One IRQ, buffered, until the shell chooses to look at it.',
+    steps:[
+      {l:'hw',  file:'PS/2 controller', fn:'IRQ1', n:'a key transition raises the interrupt line'},
+      {l:'core', file:'isr_stubs.s', fn:'irq%1 stub', n:'registers saved, calls irq_handler'},
+      {l:'drv', file:'keyboard.c', fn:'keyboard_handler', n:'scancode decoded, pushed into a ring buffer'},
+      {l:'user', file:'shell.c', fn:'shell_run', n:'polls keyboard_has_char, builds the line'},
+      {l:'user', file:'shell.c', fn:'command dispatch', n:'str_eq against ls/cat/run/edit/snake/kronk/desktop'},
+    ]
+  },
+  {
+    id:'timer', label:'timer → context switch',
+    title:'Timer IRQ → preemptive context switch',
+    desc:'The one interrupt that never returns to where it came from — it decides where to return to.',
+    steps:[
+      {l:'hw', file:'PIT (channel 0)', fn:'IRQ0', n:'fires at the fixed rate set by timer_init(100)'},
+      {l:'core', file:'isr_stubs.s', fn:'irq%1 stub', n:'saves the interrupted task\'s registers'},
+      {l:'drv', file:'timer.c', fn:'timer_handler', n:'tick counter incremented, calls the scheduler'},
+      {l:'core', file:'task.c', fn:'task_start_scheduling / scheduler', n:'round robin picks the next ready task'},
+      {l:'core', file:'context_switch.s', fn:'context_switch', n:'stack pointers swapped between task structs'},
+      {l:'core', file:'isr_stubs.s', fn:'iret', n:'resumes the new task mid-instruction — it never yielded'},
+    ]
+  },
+  {
+    id:'syscall', label:'syscall: write()',
+    title:'Ring 3 program calls write()',
+    desc:'The one sanctioned doorway from user code back into the kernel.',
+    steps:[
+      {l:'user', file:'user_program.c', fn:'write(...)', n:'wraps int 0x80 with the syscall number in EAX'},
+      {l:'sys', file:'isr_stubs.s', fn:'isr128', n:'IDT gate DPL=3 lets ring 3 trigger this vector'},
+      {l:'sys', file:'isr_stubs.s', fn:'call isr_handler', n:'CPU has already switched to CPL 0 via the TSS'},
+      {l:'sys', file:'syscall.c', fn:'syscall_handler', n:'reads EAX, dispatches through the syscall table'},
+      {l:'drv', file:'vga.c / serial.c', fn:'vga_write / serial_write', n:'the actual write happens here'},
+      {l:'sys', file:'isr_stubs.s', fn:'syscall_return_tail', n:'iret drops back to ring 3, exactly where it left off'},
+    ]
+  },
+  {
+    id:'fork', label:'fork / exec / wait',
+    title:'fork() → exec() → wait()',
+    desc:'A new process, sharing memory until either side writes to it.',
+    steps:[
+      {l:'user', file:'fork_demo.c', fn:'fork()', n:'syscall into the kernel'},
+      {l:'core', file:'task.c', fn:'task_create_forked', n:'new task built to resume via syscall_return_tail'},
+      {l:'core', file:'paging.c', fn:'paging_map_page (COW)', n:'parent and child share physical frames, marked read-only'},
+      {l:'core', file:'paging.c', fn:'paging_handle_cow_fault', n:'first write after fork: real copy or reclaim, by refcount'},
+      {l:'core', file:'elf.c', fn:'elf_load', n:'exec() replaces the address space with a new ELF image'},
+      {l:'core', file:'task.c', fn:'task_wait_specific / wait()', n:'parent blocks until the child becomes a zombie'},
+    ]
+  },
+  {
+    id:'fault', label:'invalid access → fault',
+    title:'A bad pointer dereference',
+    desc:'Segmentation and paging are two separate checks — either can stop this before RAM is ever touched.',
+    steps:[
+      {l:'user', file:'(any code)', fn:'mov [bad_ptr], eax', n:'linear address computed by the instruction'},
+      {l:'core', file:'gdt.c (descriptors)', fn:'segment load', n:'DPL vs CPL checked first — this can already fault'},
+      {l:'core', file:'paging.c (tables)', fn:'page table walk', n:'U/S and present bits checked per byte accessed'},
+      {l:'core', file:'isr_stubs.s', fn:'isr%1 (vector 14)', n:'CPU raises #PF, pushes an error code'},
+      {l:'core', file:'idt.c', fn:'page_fault handler', n:'reads CR2 for the faulting address, decodes it'},
+      {l:'user', file:'shell.c / task.c', fn:'(fault reported)', n:'a real OS would kill just this task, not halt'},
+    ]
+  },
+  {
+    id:'disk', label:'cat a file',
+    title:'Reading a file off disk',
+    desc:'From a shell command down to individual sectors and back.',
+    steps:[
+      {l:'user', file:'shell.c', fn:'cmd "cat"', n:'parses the filename argument'},
+      {l:'drv', file:'fat16.c', fn:'fat16_find_file', n:'walks the root directory entries'},
+      {l:'drv', file:'fat16.c', fn:'fat16_read_file', n:'follows the cluster chain across both FAT copies'},
+      {l:'drv', file:'ata.c', fn:'ata_read_sectors', n:'LBA + FAT16_PARTITION_LBA_OFFSET → real disk sectors'},
+      {l:'hw', file:'IDE controller', fn:'0x1F0 ports', n:'polls BSY/DRQ, transfers 256 words per sector'},
+      {l:'user', file:'shell.c', fn:'vga_write', n:'file contents printed to the screen'},
+    ]
+  },
+  {
+    id:'gui', label:'mouse → drag window',
+    title:'Mouse move → dragging a GUI window',
+    desc:'Same IRQ pattern as the keyboard, feeding a completely different consumer.',
+    steps:[
+      {l:'hw', file:'PS/2 mouse', fn:'IRQ12', n:'movement/button packet ready'},
+      {l:'drv', file:'mouse.c', fn:'mouse_handler', n:'overflow bits checked, deltas accumulated'},
+      {l:'gui', file:'desktop.c', fn:'desktop_run', n:'polls mouse_get_x/y each frame'},
+      {l:'gui', file:'gui.c', fn:'window hit-test', n:'which window (if any) owns this position'},
+      {l:'gui', file:'gui.c', fn:'redraw', n:'window position updated, compositor redraws'},
+      {l:'drv', file:'vbe.c', fn:'framebuffer blit', n:'pixels actually change on screen'},
+    ]
+  },
+  {
+    id:'kronk', label:'run a KRONK program',
+    title:'Executing a KRONK BASIC program',
+    desc:'No external compiler — tokenized and re-interpreted line by line.',
+    steps:[
+      {l:'user', file:'shell.c', fn:'cmd "kronk"', n:'filename handed to the interpreter'},
+      {l:'drv', file:'fat16.c', fn:'fat16_read_file', n:'the .KRO source is loaded into memory'},
+      {l:'user', file:'kronk.c', fn:'kronk_run', n:'lines tokenized and stored, sorted by line number'},
+      {l:'user', file:'kronk.c', fn:'eval loop', n:'LET/PRINT/IF/GOTO re-parsed each pass, step-capped'},
+      {l:'drv', file:'vga.c', fn:'vga_write', n:'PRINT statements reach the screen'},
+    ]
+  },
+];
+
+const stackEl = document.getElementById('stack');
+STACK_ORDER.forEach(id=>{
+  const L = LAYERS.find(l=>l.id===id);
+  const div = document.createElement('div');
+  div.className='layer'; div.id='layer-'+id;
+  div.style.setProperty('--lc', L.color);
+  div.innerHTML = `<span class="seq"></span><div class="name">${L.name}</div><div class="files">${L.files}</div>`;
+  stackEl.appendChild(div);
+});
+
+const tabsEl = document.getElementById('tabs');
+SCENARIOS.forEach(sc=>{
+  const b = document.createElement('div');
+  b.className='tab'; b.textContent = sc.label; b.onclick=()=>select(sc.id);
+  b.id = 'tab-'+sc.id;
+  tabsEl.appendChild(b);
+});
+
+function select(id){
+  const sc = SCENARIOS.find(s=>s.id===id);
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.getElementById('tab-'+id).classList.add('on');
+
+  document.getElementById('scTitle').textContent = sc.title;
+  document.getElementById('scDesc').textContent = sc.desc;
+
+  // reset stack
+  document.querySelectorAll('.layer').forEach(el=>{
+    el.classList.remove('active'); el.querySelector('.seq').textContent='';
+  });
+  const order = {};
+  sc.steps.forEach((s,i)=>{
+    if(!order[s.l]) order[s.l] = [];
+    order[s.l].push(i+1);
+  });
+  Object.keys(order).forEach(id=>{
+    const el = document.getElementById('layer-'+id);
+    el.classList.add('active');
+    el.querySelector('.seq').textContent = order[id].join(',');
+  });
+
+  // render steps
+  const stepsEl = document.getElementById('steps');
+  stepsEl.innerHTML='';
+  sc.steps.forEach((s,i)=>{
+    const L = LAYERS.find(l=>l.id===s.l);
+    const row = document.createElement('div');
+    row.className='step';
+    row.style.setProperty('--sc', L.color);
+    row.innerHTML = `
+      <div class="dot">${i+1}</div>
+      <div class="tag">${L.name}</div>
+      <div class="loc">${s.file} <span class="fn">${s.fn}</span></div>
+      <div class="note">${s.n}</div>
+    `;
+    stepsEl.appendChild(row);
+  });
+}
+
+select('boot');
+</script>
+</body>
+</html>
