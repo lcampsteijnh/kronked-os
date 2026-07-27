@@ -1,0 +1,1 @@
+Hello from a real file on a real FAT filesystem, read by our own FAT16 driver!
